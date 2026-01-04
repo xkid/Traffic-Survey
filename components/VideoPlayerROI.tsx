@@ -109,13 +109,34 @@ export const VideoPlayerROI: React.FC<VideoPlayerROIProps> = ({
     return path;
   };
 
-  // Sync canvas size
+  // Sync canvas size with container size dynamically
   useEffect(() => {
-    if (containerRef.current && canvasRef?.current) {
-        const { clientWidth, clientHeight } = containerRef.current;
-        canvasRef.current.width = clientWidth;
-        canvasRef.current.height = clientHeight;
-    }
+    if (!containerRef.current || !canvasRef?.current) return;
+    
+    const updateCanvasSize = () => {
+        if (containerRef.current && canvasRef?.current) {
+            const { clientWidth, clientHeight } = containerRef.current;
+            // Only update if dimensions changed to avoid flickers
+            if (canvasRef.current.width !== clientWidth || canvasRef.current.height !== clientHeight) {
+                canvasRef.current.width = clientWidth;
+                canvasRef.current.height = clientHeight;
+            }
+        }
+    };
+
+    // Initial check
+    updateCanvasSize();
+
+    // Observe resizing
+    const resizeObserver = new ResizeObserver(() => {
+        updateCanvasSize();
+    });
+    
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+        resizeObserver.disconnect();
+    };
   }, [videoUrl, canvasRef]);
 
   return (

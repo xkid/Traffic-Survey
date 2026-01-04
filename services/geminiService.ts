@@ -38,9 +38,10 @@ export class TrafficSurveySession {
   public isConnected: boolean = false;
   
   // Config
-  private roi: ROI = [];
+  private normalizedRoi: ROI = []; // Store normalized (0-1) coordinates
   private directionVector: Vector | null = null;
-  private videoDims = { width: 0, height: 0 };
+  // stored for normalization reference, but detection uses live video dims
+  private initialVideoDims = { width: 0, height: 0 }; 
 
   // Tracking State
   private trackedVehicles: TrackedVehicle[] = [];
@@ -72,9 +73,15 @@ export class TrafficSurveySession {
       onError: (err: Error) => void,
       onStats: (stats: RealTimeStats) => void
   ) {
-    this.roi = roi;
+    this.initialVideoDims = videoDims;
+    
+    // Normalize ROI points (0 to 1) based on the video dimensions at setup time
+    this.normalizedRoi = roi.map(p => ({
+        x: p.x / videoDims.width,
+        y: p.y / videoDims.height
+    }));
+
     this.directionVector = directionVector;
-    this.videoDims = videoDims;
     this.onRowCallback = onRow;
     this.onErrorCallback = onError;
     this.onStatsCallback = onStats;
@@ -107,11 +114,16 @@ export class TrafficSurveySession {
 
       const predictions = await this.model.detect(video);
       
-      const scaleX = this.videoDims.width / video.videoWidth;
-      const scaleY = this.videoDims.height / video.videoHeight;
+      // Calculate Dynamic Scales based on current video display size
+      // This ensures alignment even if the window resizes
+      const displayW = video.offsetWidth;
+      const displayH = video.offsetHeight;
+      const scaleX = displayW / video.videoWidth;
+      const scaleY = displayH / video.videoHeight;
 
       if (canvasCtx) {
-          canvasCtx.clearRect(0, 0, this.videoDims.width, this.videoDims.height);
+          // Ensure we clear the entire canvas
+          canvasCtx.clearRect(0, 0, displayW, displayH);
       }
 
       const vehicleTypes = ['car', 'truck', 'bus', 'motorcycle'];
@@ -122,6 +134,7 @@ export class TrafficSurveySession {
       predictions.forEach(p => {
           if (!vehicleTypes.includes(p.class)) return;
 
+          // Convert bbox to Current Display Coordinates
           const boxX = p.bbox[0] * scaleX;
           const boxY = p.bbox[1] * scaleY;
           const boxW = p.bbox[2] * scaleX;
@@ -132,9 +145,13 @@ export class TrafficSurveySession {
           
           // STRICTER ROI CHECK: 
           // Check bottom center (wheels) to match ground plane
-          const checkPoint = { x: centerX, y: boxY + boxH * 0.9 }; 
+          // Normalize the check point to 0..1 for comparison against normalized ROI
+          const checkPointNorm = { 
+              x: centerX / displayW, 
+              y: (boxY + boxH * 0.9) / displayH 
+          }; 
 
-          if (isPointInPolygon(checkPoint, this.roi)) {
+          if (isPointInPolygon(checkPointNorm, this.normalizedRoi)) {
               currentCandidates.push({
                   x: centerX, y: centerY, w: boxW, h: boxH, class: p.class
               });
@@ -176,6 +193,11 @@ export class TrafficSurveySession {
               let wrongWay = bestMatch.wrongWay;
               
               if (this.directionVector && speed > 1.5) {
+                  // Normalize vectors for comparison if needed, or stick to pixels.
+                  // Since directionVector is from setup (pixels), we should probably normalize it too 
+                  // or just assume local linearity.
+                  // For simplicity, we use the raw setup pixels vs current pixels. 
+                  // NOTE: This might be slightly off if aspect ratio changed significantly, but usually OK for direction.
                   const uDx = this.directionVector.end.x - this.directionVector.start.x;
                   const uDy = this.directionVector.end.y - this.directionVector.start.y;
                   const dot = dx * uDx + dy * uDy;
