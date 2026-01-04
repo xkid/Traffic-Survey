@@ -180,8 +180,8 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ data, intersectionName =
                   data.cell.styles.halign = 'right';
                   data.cell.colSpan = 4;
                   data.cell.styles.fillColor = colorGrayBg;
-                  data.cell.styles.fontStyle: 'bold';
-                  data.cell.styles.textColor: colorHeaderText;
+                  data.cell.styles.fontStyle = 'bold';
+                  data.cell.styles.textColor = colorHeaderText;
               }
               // Gray out empty cells in stats
               if ([1, 2, 3, 4, 6, 8].includes(data.column.index)) {
