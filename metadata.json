@@ -1,0 +1,5 @@
+{
+  "name": "Sidra Traffic Survey AI",
+  "description": "AI-powered traffic queue survey tool using the Sidra Solutions methodology. Upload traffic video, define detection zones, and generate detailed queue analysis reports.",
+  "requestFramePermissions": []
+}
