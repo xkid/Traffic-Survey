@@ -1,6 +1,6 @@
 import "@tensorflow/tfjs";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
-import { ROI, SurveyRow, Point, SurveyStatus, Vector, RealTimeStats, IntersectionType } from "../types";
+import { ROI, SurveyRow, Point, SurveyStatus, Vector, RealTimeStats, IntersectionType, SurveySettings } from "../types";
 
 // Ray-casting algorithm for point in polygon
 function isPointInPolygon(point: Point, vs: Point[]) {
@@ -43,6 +43,15 @@ export class TrafficSurveySession {
   // stored for normalization reference, but detection uses live video dims
   private initialVideoDims = { width: 0, height: 0 }; 
   private intersectionType: IntersectionType = 'SIGNALISED';
+  
+  // Settings
+  private settings: SurveySettings = {
+      detectionConfidence: 0.3,
+      iouThreshold: 0.5,
+      stopSpeedThreshold: 0.8,
+      queueJoinThreshold: 2.5,
+      maxMissingFrames: 15
+  };
 
   // Tracking State
   private trackedVehicles: TrackedVehicle[] = [];
@@ -71,12 +80,14 @@ export class TrafficSurveySession {
       directionVector: Vector | null,
       videoDims: {width: number, height: number}, 
       intersectionType: IntersectionType,
+      settings: SurveySettings,
       onRow: (row: Partial<SurveyRow>) => void, 
       onError: (err: Error) => void,
       onStats: (stats: RealTimeStats) => void
   ) {
     this.initialVideoDims = videoDims;
     this.intersectionType = intersectionType;
+    this.settings = settings;
     
     // Normalize ROI points (0 to 1) based on the video dimensions at setup time
     this.normalizedRoi = roi.map(p => ({
@@ -115,18 +126,16 @@ export class TrafficSurveySession {
 
       this.frameCount++;
 
-      // LOWER THRESHOLD TO 0.3 (30%) TO DETECT MOTORCYCLES BETTER
-      const predictions = await this.model.detect(video, 40, 0.3);
+      // USE SETTINGS FOR DETECTION
+      const predictions = await this.model.detect(video, 40, this.settings.detectionConfidence);
       
       // Calculate Dynamic Scales based on current video display size
-      // This ensures alignment even if the window resizes
       const displayW = video.offsetWidth;
       const displayH = video.offsetHeight;
       const scaleX = displayW / video.videoWidth;
       const scaleY = displayH / video.videoHeight;
 
       if (canvasCtx) {
-          // Ensure we clear the entire canvas
           canvasCtx.clearRect(0, 0, displayW, displayH);
       }
 
@@ -147,9 +156,7 @@ export class TrafficSurveySession {
           const centerX = boxX + boxW / 2;
           const centerY = boxY + boxH / 2;
           
-          // STRICTER ROI CHECK: 
-          // Check bottom center (wheels) to match ground plane
-          // Normalize the check point to 0..1 for comparison against normalized ROI
+          // ROI CHECK
           const checkPointNorm = { 
               x: centerX / displayW, 
               y: (boxY + boxH * 0.9) / displayH 
@@ -164,9 +171,9 @@ export class TrafficSurveySession {
 
       // 2. Update Tracking
       const newTracked: TrackedVehicle[] = [];
-      const STOP_THRESHOLD = 0.8; // Pixels/frame. < 0.8 is Stopped.
-      const QUEUE_JOIN_THRESHOLD = 2.5; // Pixels/frame. < 2.5 implies joining queue (slow movement)
-      const MAX_MISSING_FRAMES = 15; // Persist for ~1.5 seconds if detection lost
+      const STOP_THRESHOLD = this.settings.stopSpeedThreshold; 
+      const QUEUE_JOIN_THRESHOLD = this.settings.queueJoinThreshold;
+      const MAX_MISSING_FRAMES = this.settings.maxMissingFrames;
 
       const matchedIds = new Set<number>();
 

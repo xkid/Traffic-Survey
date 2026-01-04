@@ -43,3 +43,11 @@ export enum ProcessingState {
 export type SurveyStatus = 'RED' | 'GREEN' | 'IDLE';
 
 export type IntersectionType = 'SIGNALISED' | 'UNSIGNALISED';
+
+export interface SurveySettings {
+    detectionConfidence: number; // 0.1 - 1.0 (default 0.3)
+    iouThreshold: number; // 0.1 - 1.0 (default 0.5)
+    stopSpeedThreshold: number; // pixels/frame (default 0.8)
+    queueJoinThreshold: number; // pixels/frame (default 2.5)
+    maxMissingFrames: number; // frames (default 15)
+}

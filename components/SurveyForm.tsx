@@ -87,28 +87,112 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ data, intersectionName =
   const handleExportPDF = () => {
     const doc = new jsPDF();
     
-    doc.setFontSize(16);
-    doc.text(`Sidra Queue Survey - ${intersectionType}`, 14, 20);
+    // Header Info
+    doc.setFontSize(14);
+    doc.setTextColor(31, 58, 138); // Text sidra-headerText (blue)
+    doc.text("QUEUE SURVEY FORM", 14, 15);
+
     doc.setFontSize(10);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 28);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Intersection: ${intersectionName}`, 14, 25);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 25);
     
-    const head = [[
-      "Cycle", "Start Time", "Ni", "Nr", "Ng", "Nb", "No"
-    ]];
-    
-    const body = data.map(row => [
-      row.cycleNumber,
-      `${row.startHour}:${row.startMin}:${row.startSec}`,
-      row.Ni, row.Nr, row.Ng, row.Nb, row.No
+    // Construct Body Data
+    const bodyData = displayRows.map(row => [
+        row.cycleNumber,
+        row.startHour,
+        row.startMin,
+        row.startSec,
+        renderCell(row.Ni),
+        renderCell(row.Nr),
+        renderCell(row.Ng),
+        renderCell(row.Nb),
+        renderCell(row.No)
     ]);
 
-    // Add stats
-    body.push(["Avg", "", calculateAverage('Ni'), calculateAverage('Nr'), calculateAverage('Ng'), calculateAverage('Nb'), calculateAverage('No')]);
-    
+    // Construct Footer (Stats) rows
+    const statsRows = [
+        ["98th percentile", "", "", "", "", calculatePercentile('Nr', 98), "", calculatePercentile('Nb', 98), ""],
+        ["95th percentile", "", "", "", "", calculatePercentile('Nr', 95), "", calculatePercentile('Nb', 95), ""],
+        ["90th percentile", "", "", "", "", calculatePercentile('Nr', 90), "", calculatePercentile('Nb', 90), ""],
+        ["85th percentile", "", "", "", "", calculatePercentile('Nr', 85), "", calculatePercentile('Nb', 85), ""],
+        ["Average", "", "", "", "", calculateAverage('Nr'), "", calculateAverage('Nb'), ""]
+    ];
+
+    // Colors
+    const colorHeaderBg = [253, 251, 229]; // #FDFBE5
+    const colorHeaderText = [31, 58, 138]; // #1F3A8A
+    const colorCellBg = [255, 255, 224];   // #FFFFE0
+    const colorGrayBg = [241, 241, 241]; // #f1f1f1
+
     autoTable(doc, {
-      head: head,
-      body: body,
-      startY: 35,
+      startY: 30,
+      theme: 'grid',
+      head: [
+        [
+            { content: 'Cycle Number', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold' } },
+            { content: labelCycleTime, colSpan: 3, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold' } },
+            { content: `Queue at Start of ${isSignalised ? 'RED' : 'WAIT (Gap Search)'}`, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', fillColor: colorHeaderBg, textColor: colorHeaderText } },
+            { content: labelQueueStartGreen, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', fillColor: colorHeaderBg, textColor: colorHeaderText } },
+            { content: 'Back of Queue Count', styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', fillColor: colorHeaderBg, textColor: colorHeaderText } },
+            { content: 'Back of Queue', styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', fillColor: colorHeaderBg, textColor: colorHeaderText } },
+            { content: labelOverflow, styles: { valign: 'middle', halign: 'center', fontStyle: 'bold', fillColor: colorHeaderBg, textColor: colorHeaderText } },
+        ],
+        [
+            { content: 'H', styles: { halign: 'center' } },
+            { content: 'M', styles: { halign: 'center' } },
+            { content: 'S', styles: { halign: 'center' } },
+            { content: '(veh)\nNi', styles: { halign: 'center', fontStyle: 'bold' } },
+            { content: '(veh)\nNr', styles: { halign: 'center', fontStyle: 'bold' } },
+            { content: '(veh)\nNg', styles: { halign: 'center', fontStyle: 'bold' } },
+            { content: '(veh)\nNb', styles: { halign: 'center', fontStyle: 'bold' } },
+            { content: '(veh)\nNo', styles: { halign: 'center', fontStyle: 'bold' } },
+        ]
+      ],
+      body: [
+          ...bodyData,
+          ...statsRows
+      ],
+      headStyles: {
+          fillColor: colorHeaderBg,
+          textColor: colorHeaderText,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.1,
+          fontSize: 8
+      },
+      bodyStyles: {
+          fillColor: colorCellBg,
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0.1,
+          fontSize: 9,
+          halign: 'center'
+      },
+      columnStyles: {
+          0: { fontStyle: 'bold', textColor: colorHeaderText },
+          // Stats row formatting handled in didParseCell
+      },
+      didParseCell: function(data) {
+          // Identify stats rows (after the 20 data rows)
+          if (data.section === 'body' && data.row.index >= 20) {
+              if (data.column.index === 0) {
+                  // Label column ("98th percentile", etc)
+                  data.cell.styles.halign = 'right';
+                  data.cell.colSpan = 4;
+                  data.cell.styles.fillColor = colorGrayBg;
+                  data.cell.styles.fontStyle: 'bold';
+                  data.cell.styles.textColor: colorHeaderText;
+              }
+              // Gray out empty cells in stats
+              if ([1, 2, 3, 4, 6, 8].includes(data.column.index)) {
+                  data.cell.styles.fillColor = colorGrayBg; // Greyed out
+              }
+              if (data.column.index === 0 && data.row.index === 24) {
+                   // Average Row specifically
+                   data.cell.styles.fontStyle = 'bold';
+              }
+          }
+      }
     });
 
     doc.save(`sidra_survey_${new Date().toISOString().slice(0,10)}.pdf`);

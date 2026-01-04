@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { VideoUploader } from './components/VideoUploader';
 import { VideoPlayerROI } from './components/VideoPlayerROI';
 import { SurveyForm } from './components/SurveyForm';
+import { SettingsModal } from './components/SettingsModal';
 import { TrafficSurveySession } from './services/geminiService';
-import { ROI, ProcessingState, SurveyRow, SurveyStatus, Vector, RealTimeStats, IntersectionType } from './types';
+import { ROI, ProcessingState, SurveyRow, SurveyStatus, Vector, RealTimeStats, IntersectionType, SurveySettings } from './types';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -13,7 +14,17 @@ function App() {
   const [videoDims, setVideoDims] = useState({ width: 0, height: 0 });
   const [status, setStatus] = useState<ProcessingState>(ProcessingState.IDLE);
   const [intersectionType, setIntersectionType] = useState<IntersectionType>('SIGNALISED');
+  const [showSettings, setShowSettings] = useState(false);
   
+  // Settings State
+  const [settings, setSettings] = useState<SurveySettings>({
+      detectionConfidence: 0.3,
+      iouThreshold: 0.5,
+      stopSpeedThreshold: 0.8,
+      queueJoinThreshold: 2.5,
+      maxMissingFrames: 15
+  });
+
   // Real-time Stats State
   const [realTimeStats, setRealTimeStats] = useState<RealTimeStats>({
       phase: 'GREEN',
@@ -93,6 +104,7 @@ function App() {
             direction,
             videoDims,
             intersectionType,
+            settings, // PASS SETTINGS
             (partialRow) => {
                 const videoTime = videoRef.current ? videoRef.current.currentTime : 0;
                 const minutes = Math.floor(videoTime / 60);
@@ -171,6 +183,13 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-100">
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)} 
+        settings={settings}
+        onSave={setSettings}
+      />
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 py-4 px-6 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center space-x-3">
@@ -179,14 +198,23 @@ function App() {
           </div>
           <h1 className="text-xl font-bold text-gray-800">Sidra Queue Survey AI (Local)</h1>
         </div>
-        {status === ProcessingState.COMPLETED && (
-            <button 
-                onClick={reset}
-                className="text-sm text-gray-500 hover:text-blue-600 font-medium"
+        <div className="flex items-center gap-4">
+            <button
+                onClick={() => setShowSettings(true)}
+                className="text-gray-600 hover:text-blue-900 font-medium flex items-center gap-2"
+                disabled={status === ProcessingState.ANALYZING}
             >
-                New Survey
+                <i className="fas fa-cog"></i> Settings
             </button>
-        )}
+            {status === ProcessingState.COMPLETED && (
+                <button 
+                    onClick={reset}
+                    className="text-sm text-gray-500 hover:text-blue-600 font-medium"
+                >
+                    New Survey
+                </button>
+            )}
+        </div>
       </header>
 
       {/* Main Content */}
