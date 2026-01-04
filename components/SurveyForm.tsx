@@ -1,12 +1,15 @@
 import React, { useMemo } from 'react';
-import { SurveyRow } from '../types';
+import { SurveyRow, IntersectionType } from '../types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface SurveyFormProps {
   data: SurveyRow[];
   intersectionName?: string;
+  intersectionType: IntersectionType;
 }
 
-export const SurveyForm: React.FC<SurveyFormProps> = ({ data, intersectionName = "Generic Intersection" }) => {
+export const SurveyForm: React.FC<SurveyFormProps> = ({ data, intersectionName = "Generic Intersection", intersectionType }) => {
   
   // Create 20 empty rows if data is less than 20
   const displayRows = useMemo(() => {
@@ -41,10 +44,96 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ data, intersectionName =
     value === 0 || value === '' ? '' : value
   );
 
+  // --- LABELS BASED ON INTERSECTION TYPE ---
+  const isSignalised = intersectionType === 'SIGNALISED';
+  const labelQueueStartGreen = isSignalised ? "Queue at Start of GREEN" : "Queue at Start of GAP";
+  const labelOverflow = isSignalised ? "Overflow Queue (End of Green)" : "Overflow Queue (End of Gap)";
+  const labelCycleTime = isSignalised ? "Cycle Start Time (Start of Red)" : "Cycle Start Time (Queue Start)";
+
+  // --- EXPORT FUNCTIONS ---
+  
+  const handleExportCSV = () => {
+    const headers = [
+      "Cycle Number", 
+      "Start Hour", "Start Min", "Start Sec", 
+      "Ni (Queue Start Red/Wait)", 
+      `Nr (${isSignalised ? 'Start Green' : 'Start Gap'})`, 
+      "Ng (Arrivals)", 
+      "Nb (Back of Queue)", 
+      "No (Overflow)"
+    ];
+
+    const csvRows = data.map(row => [
+      row.cycleNumber,
+      row.startHour, row.startMin, row.startSec,
+      row.Ni, row.Nr, row.Ng, row.Nb, row.No
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...csvRows.map(e => e.join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `sidra_survey_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text(`Sidra Queue Survey - ${intersectionType}`, 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 28);
+    
+    const head = [[
+      "Cycle", "Start Time", "Ni", "Nr", "Ng", "Nb", "No"
+    ]];
+    
+    const body = data.map(row => [
+      row.cycleNumber,
+      `${row.startHour}:${row.startMin}:${row.startSec}`,
+      row.Ni, row.Nr, row.Ng, row.Nb, row.No
+    ]);
+
+    // Add stats
+    body.push(["Avg", "", calculateAverage('Ni'), calculateAverage('Nr'), calculateAverage('Ng'), calculateAverage('Nb'), calculateAverage('No')]);
+    
+    autoTable(doc, {
+      head: head,
+      body: body,
+      startY: 35,
+    });
+
+    doc.save(`sidra_survey_${new Date().toISOString().slice(0,10)}.pdf`);
+  };
+
   return (
     <div className="w-full overflow-x-auto p-4 bg-white shadow-xl rounded-sm border border-sidra-border">
-      <div className="mb-4">
+      <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-sidra-headerText uppercase tracking-wide">Queue Survey Form</h2>
+        <div className="flex space-x-2">
+            <button 
+                onClick={handleExportCSV}
+                className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-3 rounded flex items-center"
+                disabled={data.length === 0}
+            >
+                <i className="fas fa-file-csv mr-2"></i> CSV
+            </button>
+            <button 
+                onClick={handleExportPDF}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-3 rounded flex items-center"
+                disabled={data.length === 0}
+            >
+                <i className="fas fa-file-pdf mr-2"></i> PDF
+            </button>
+        </div>
       </div>
 
       {/* Header Info */}
@@ -72,12 +161,12 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ data, intersectionName =
         <thead>
           <tr className="bg-sidra-header text-sidra-headerText">
             <th rowSpan={2} className="border border-sidra-border p-1 w-12 font-bold">Cycle Number</th>
-            <th colSpan={3} className="border border-sidra-border p-1 font-bold">Cycle Start Time <br/><span className="font-normal text-xs">(start of Red)</span></th>
-            <th className="border border-sidra-border p-1 font-bold bg-sidra-header">Queue at Start of RED</th>
-            <th className="border border-sidra-border p-1 font-bold bg-sidra-header">Queue at Start of GREEN / GAP</th>
+            <th colSpan={3} className="border border-sidra-border p-1 font-bold">{labelCycleTime}</th>
+            <th className="border border-sidra-border p-1 font-bold bg-sidra-header">Queue at Start of {isSignalised ? 'RED' : 'WAIT (Gap Search)'}</th>
+            <th className="border border-sidra-border p-1 font-bold bg-sidra-header">{labelQueueStartGreen}</th>
             <th className="border border-sidra-border p-1 font-bold bg-sidra-header">Back of Queue Count</th>
             <th className="border border-sidra-border p-1 font-bold bg-sidra-header">Back of Queue</th>
-            <th className="border border-sidra-border p-1 font-bold bg-sidra-header">Overflow Queue <br/><span className="font-normal text-xs">(at the End of Green)</span></th>
+            <th className="border border-sidra-border p-1 font-bold bg-sidra-header">{labelOverflow}</th>
           </tr>
           <tr className="bg-sidra-header text-sidra-headerText">
              <th className="border border-sidra-border w-8 font-bold">H</th>

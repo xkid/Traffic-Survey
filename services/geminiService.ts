@@ -1,6 +1,6 @@
 import "@tensorflow/tfjs";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
-import { ROI, SurveyRow, Point, SurveyStatus, Vector, RealTimeStats } from "../types";
+import { ROI, SurveyRow, Point, SurveyStatus, Vector, RealTimeStats, IntersectionType } from "../types";
 
 // Ray-casting algorithm for point in polygon
 function isPointInPolygon(point: Point, vs: Point[]) {
@@ -42,6 +42,7 @@ export class TrafficSurveySession {
   private directionVector: Vector | null = null;
   // stored for normalization reference, but detection uses live video dims
   private initialVideoDims = { width: 0, height: 0 }; 
+  private intersectionType: IntersectionType = 'SIGNALISED';
 
   // Tracking State
   private trackedVehicles: TrackedVehicle[] = [];
@@ -69,11 +70,13 @@ export class TrafficSurveySession {
       roi: ROI, 
       directionVector: Vector | null,
       videoDims: {width: number, height: number}, 
+      intersectionType: IntersectionType,
       onRow: (row: Partial<SurveyRow>) => void, 
       onError: (err: Error) => void,
       onStats: (stats: RealTimeStats) => void
   ) {
     this.initialVideoDims = videoDims;
+    this.intersectionType = intersectionType;
     
     // Normalize ROI points (0 to 1) based on the video dimensions at setup time
     this.normalizedRoi = roi.map(p => ({
@@ -112,7 +115,8 @@ export class TrafficSurveySession {
 
       this.frameCount++;
 
-      const predictions = await this.model.detect(video);
+      // LOWER THRESHOLD TO 0.3 (30%) TO DETECT MOTORCYCLES BETTER
+      const predictions = await this.model.detect(video, 40, 0.3);
       
       // Calculate Dynamic Scales based on current video display size
       // This ensures alignment even if the window resizes
@@ -193,11 +197,6 @@ export class TrafficSurveySession {
               let wrongWay = bestMatch.wrongWay;
               
               if (this.directionVector && speed > 1.5) {
-                  // Normalize vectors for comparison if needed, or stick to pixels.
-                  // Since directionVector is from setup (pixels), we should probably normalize it too 
-                  // or just assume local linearity.
-                  // For simplicity, we use the raw setup pixels vs current pixels. 
-                  // NOTE: This might be slightly off if aspect ratio changed significantly, but usually OK for direction.
                   const uDx = this.directionVector.end.x - this.directionVector.start.x;
                   const uDy = this.directionVector.end.y - this.directionVector.start.y;
                   const dot = dx * uDx + dy * uDy;

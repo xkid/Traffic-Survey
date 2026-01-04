@@ -4,8 +4,8 @@ export interface SurveyRow {
   startHour: string | number;
   startMin: string | number;
   startSec: string | number;
-  Ni: number; // Queue at Start of RED
-  Nr: number; // Queue at Start of GREEN / GAP
+  Ni: number; // Queue at Start of RED / GAP WAIT
+  Nr: number; // Queue at Start of GREEN / GAP ACCEPT
   Ng: number; // Back of Queue Count
   Nb: number; // Back of Queue (Calculated: Nr + Ng)
   No: number; // Overflow Queue
@@ -41,3 +41,5 @@ export enum ProcessingState {
 }
 
 export type SurveyStatus = 'RED' | 'GREEN' | 'IDLE';
+
+export type IntersectionType = 'SIGNALISED' | 'UNSIGNALISED';

@@ -3,7 +3,7 @@ import { VideoUploader } from './components/VideoUploader';
 import { VideoPlayerROI } from './components/VideoPlayerROI';
 import { SurveyForm } from './components/SurveyForm';
 import { TrafficSurveySession } from './services/geminiService';
-import { ROI, ProcessingState, SurveyRow, SurveyStatus, Vector, RealTimeStats } from './types';
+import { ROI, ProcessingState, SurveyRow, SurveyStatus, Vector, RealTimeStats, IntersectionType } from './types';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -12,6 +12,7 @@ function App() {
   const [direction, setDirection] = useState<Vector | null>(null);
   const [videoDims, setVideoDims] = useState({ width: 0, height: 0 });
   const [status, setStatus] = useState<ProcessingState>(ProcessingState.IDLE);
+  const [intersectionType, setIntersectionType] = useState<IntersectionType>('SIGNALISED');
   
   // Real-time Stats State
   const [realTimeStats, setRealTimeStats] = useState<RealTimeStats>({
@@ -91,6 +92,7 @@ function App() {
             roi, 
             direction,
             videoDims,
+            intersectionType,
             (partialRow) => {
                 const videoTime = videoRef.current ? videoRef.current.currentTime : 0;
                 const minutes = Math.floor(videoTime / 60);
@@ -222,6 +224,20 @@ function App() {
                     canvasRef={canvasRef}
                   />
 
+                  {/* Intersection Type Selector */}
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+                      <span className="font-semibold text-gray-700 text-sm">Intersection Type:</span>
+                      <select 
+                        value={intersectionType}
+                        onChange={(e) => setIntersectionType(e.target.value as IntersectionType)}
+                        className="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+                        disabled={status === ProcessingState.ANALYZING}
+                      >
+                          <option value="SIGNALISED">Signalised Intersection (Red/Green)</option>
+                          <option value="UNSIGNALISED">Unsignalised Intersection (Gap/Yield)</option>
+                      </select>
+                  </div>
+
                   <div className="mt-6 flex justify-end space-x-3">
                     {status === ProcessingState.ANALYZING && (
                         <button
@@ -269,7 +285,10 @@ function App() {
                     <div className={`p-4 rounded-lg text-center mb-4 transition-colors ${realTimeStats.phase === 'RED' ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
                          <span className="text-xs uppercase font-bold text-gray-500 block mb-1">Current Phase</span>
                          <span className={`text-2xl font-black ${realTimeStats.phase === 'RED' ? 'text-red-600' : 'text-green-600'}`}>
-                             {realTimeStats.phase}
+                             {intersectionType === 'SIGNALISED' 
+                                ? realTimeStats.phase 
+                                : (realTimeStats.phase === 'RED' ? 'QUEUEING' : 'GAP ACCEPT')
+                             }
                          </span>
                     </div>
 
@@ -300,23 +319,23 @@ function App() {
                          <div>
                              <div className="flex items-center mb-1">
                                  <div className="w-3 h-3 bg-red-500 mr-2 rounded-sm"></div>
-                                 <span className="font-bold font-mono text-blue-900">Ni (Queue Start Red)</span>
+                                 <span className="font-bold font-mono text-blue-900">Ni (Queue Start {intersectionType === 'SIGNALISED' ? 'Red' : 'Wait'})</span>
                              </div>
-                             <p className="text-gray-500 text-xs pl-5">Initial Overflow Queue from previous cycle. Vehicles still queued when Red starts.</p>
+                             <p className="text-gray-500 text-xs pl-5">Initial Overflow Queue from previous cycle. Vehicles still queued when phase starts.</p>
                          </div>
                          <div>
                              <div className="flex items-center mb-1">
                                  <div className="w-3 h-3 bg-orange-500 mr-2 rounded-sm"></div>
-                                 <span className="font-bold font-mono text-blue-900">Nr (Queue Start Green)</span>
+                                 <span className="font-bold font-mono text-blue-900">Nr (Queue Start {intersectionType === 'SIGNALISED' ? 'Green' : 'Gap'})</span>
                              </div>
-                             <p className="text-gray-500 text-xs pl-5">Vehicles stopped in queue at the moment Green starts.</p>
+                             <p className="text-gray-500 text-xs pl-5">Vehicles stopped in queue at the moment flow starts.</p>
                          </div>
                          <div>
                              <div className="flex items-center mb-1">
                                  <div className="w-3 h-3 bg-orange-400 mr-2 rounded-sm"></div>
                                  <span className="font-bold font-mono text-blue-900">Ng (Arrivals)</span>
                              </div>
-                             <p className="text-gray-500 text-xs pl-5">Vehicles joining the back of the queue during the Green phase.</p>
+                             <p className="text-gray-500 text-xs pl-5">Vehicles joining the back of the queue during the active phase.</p>
                          </div>
                          <div>
                              <div className="flex items-center mb-1">
@@ -339,12 +358,12 @@ function App() {
             {/* Step 3: Results */}
             <div className="space-y-4 lg:col-span-3">
                  <div className="animate-fade-in-up">
-                    <SurveyForm data={surveyData} />
+                    <SurveyForm data={surveyData} intersectionType={intersectionType} />
                  </div>
                  {surveyData.length === 0 && status === ProcessingState.ANALYZING && (
                      <div className="text-center text-gray-500 italic text-sm mt-4 p-4 border border-dashed rounded-lg">
                          <i className="fas fa-car mr-2"></i>
-                         Monitoring cycles... Data rows appear when Signal turns RED.
+                         Monitoring cycles... Data rows appear when Queue clears or Signal changes.
                      </div>
                  )}
             </div>
